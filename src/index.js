@@ -10,6 +10,7 @@ const {
   Events,
   Partials,
   ActivityType,
+  PermissionFlagsBits,
 } = require('discord.js');
 const {
   AudioPlayerStatus,
@@ -469,6 +470,19 @@ async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
 
   const voiceChannel = voiceChannels[0];
 
+  const botPermissions = voiceChannel.permissionsFor(client.user);
+  const missingPermissions = [
+    ['View Channel', PermissionFlagsBits.ViewChannel],
+    ['Connect', PermissionFlagsBits.Connect],
+    ['Speak', PermissionFlagsBits.Speak],
+  ]
+    .filter(([, permission]) => !botPermissions?.has(permission))
+    .map(([name]) => name);
+  if (missingPermissions.length > 0) {
+    await message.reply(`I am missing these permissions in **${voiceChannel.name}**: ${missingPermissions.join(', ')}.`);
+    return;
+  }
+
   const guildId = voiceChannel.guild.id;
   const requesterId = userId;
   chatReaders.delete(guildId);
@@ -507,8 +521,12 @@ async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
   } catch (error) {
+    console.error(`Voice connection timed out in ${voiceChannel.guild.name}/${voiceChannel.name}:`, {
+      status: connection.state.status,
+      error: error.message,
+    });
     leaveGuild(guildId);
-    throw new Error('I could not join that voice channel. Check that I have Connect and Speak permissions.');
+    throw new Error(`Discord voice connection failed while the bot was in ${voiceChannel.name}. Current state: ${connection.state.status}.`);
   }
 
   receiver.speaking.on('start', (speakingUserId) => {
