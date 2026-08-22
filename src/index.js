@@ -469,7 +469,9 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
     if (voiceMode === 'google') {
-      const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(translationLanguage || 'en-US')}&q=${encodeURIComponent(spokenText)}`);
+      const response = await fetch(`https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${encodeURIComponent((translationLanguage || 'en').split('-')[0])}&dt=t&q=${encodeURIComponent(spokenText)}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
       if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
       await fs.promises.writeFile(filePath, Buffer.from(await response.arrayBuffer()));
     } else {
