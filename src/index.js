@@ -413,6 +413,19 @@ async function sayInVoiceChannel(message, voiceMode, speechText) {
     return;
   }
 
+  const botPermissions = voiceChannel.permissionsFor(client.user);
+  const missingPermissions = [
+    ['View Channel', PermissionFlagsBits.ViewChannel],
+    ['Connect', PermissionFlagsBits.Connect],
+    ['Speak', PermissionFlagsBits.Speak],
+  ]
+    .filter(([, permission]) => !botPermissions?.has(permission))
+    .map(([name]) => name);
+  if (missingPermissions.length > 0) {
+    await message.reply(`I am missing these permissions in **${voiceChannel.name}**: ${missingPermissions.join(', ')}.`);
+    return;
+  }
+
   leaveGuild(voiceChannel.guild.id);
   chatReaders.delete(voiceChannel.guild.id);
   const connection = joinVoiceChannel({
@@ -425,31 +438,59 @@ async function sayInVoiceChannel(message, voiceMode, speechText) {
   const player = createAudioPlayer();
   connection.subscribe(player);
   players.set(voiceChannel.guild.id, { connection, player });
-  await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
   const extension = voiceMode === 'google' ? 'mp3' : 'wav';
   const filePath = path.join(os.tmpdir(), `discord-tts-${Date.now()}.${extension}`);
+  let ffmpeg;
 
-  if (voiceMode === 'google') {
-    const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-US&q=${encodeURIComponent(speechText)}`);
-    if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
-    await fs.promises.writeFile(filePath, Buffer.from(await response.arrayBuffer()));
-  } else {
-    const say = require('say');
-    const windowsVoice = voiceMode === 'male' ? 'Microsoft David Desktop' : 'Microsoft Zira Desktop';
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+
+    if (voiceMode === 'google') {
+      const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-US&q=${encodeURIComponent(speechText)}`);
+      if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
+      await fs.promises.writeFile(filePath, Buffer.from(await response.arrayBuffer()));
+    } else {
+      const say = require('say');
+      const windowsVoice = voiceMode === 'male' ? 'Microsoft David Desktop' : 'Microsoft Zira Desktop';
+      await new Promise((resolve, reject) => {
+        say.export(speechText, windowsVoice, 1.0, filePath, (error) => error ? reject(error) : resolve());
+      });
+    }
+
+    ffmpeg = spawn(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error', '-i', filePath,
+      '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
+    player.play(resource);
+    await message.reply(`Using **${voiceMode}** voice in **${voiceChannel.name}**: ${speechText}`);
     await new Promise((resolve, reject) => {
-      say.export(speechText, windowsVoice, 1.0, filePath, (error) => error ? reject(error) : resolve());
+      let settled = false;
+      const resolveOnce = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const rejectOnce = (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+      player.once(AudioPlayerStatus.Idle, resolveOnce);
+      player.once('error', rejectOnce);
+      ffmpeg.once('error', rejectOnce);
+      ffmpeg.once('close', (code) => {
+        if (code !== 0) rejectOnce(new Error(`FFmpeg exited with code ${code}`));
+      });
     });
+  } finally {
+    if (ffmpeg && !ffmpeg.killed) ffmpeg.kill();
+    await fs.promises.rm(filePath, { force: true });
+    if (players.get(voiceChannel.guild.id)?.connection === connection) {
+      leaveGuild(voiceChannel.guild.id);
+    }
   }
-
-  const ffmpeg = spawn(ffmpegPath, [
-    '-hide_banner', '-loglevel', 'error', '-i', filePath,
-    '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'ignore'] });
-  const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
-  player.play(resource);
-  ffmpeg.on('close', () => fs.rm(filePath, { force: true }, () => {}));
-  await message.reply(`Using **${voiceMode}** voice in **${voiceChannel.name}**: ${speechText}`);
 }
 
 async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
