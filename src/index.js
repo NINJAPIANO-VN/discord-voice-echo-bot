@@ -463,6 +463,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
   const extension = voiceMode === 'google' ? 'mp3' : 'wav';
   const filePath = path.join(os.tmpdir(), `discord-tts-${Date.now()}.${extension}`);
   let ffmpeg;
+  let playbackCompleted = false;
 
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
@@ -505,10 +506,11 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
         if (code !== 0) rejectOnce(new Error(`FFmpeg exited with code ${code}`));
       });
     });
+    playbackCompleted = true;
   } finally {
     if (ffmpeg && !ffmpeg.killed) ffmpeg.kill();
     await fs.promises.rm(filePath, { force: true });
-    if (players.get(voiceChannel.guild.id)?.connection === connection) {
+    if (!playbackCompleted && players.get(voiceChannel.guild.id)?.connection === connection) {
       leaveGuild(voiceChannel.guild.id);
     }
   }
