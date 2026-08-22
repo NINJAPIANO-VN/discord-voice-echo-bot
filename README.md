@@ -47,7 +47,7 @@ To read a text channel aloud, join a voice channel and run `.chat on` in the tex
 
 To announce only social-media links, run `.links on` in the text channel. Spotify, YouTube, TikTok, Instagram, X/Twitter, Facebook, Discord, Reddit, Twitch, LinkedIn, and Snapchat links are announced in voice by service name. Run `.links off` to stop.
 
-Anyone can set a message timer with `.timer <duration> [message]`. Durations use `s`, `m`, or `h`, for example `.timer 10m take a break`. Use `.timer cancel` to cancel the active timer in that channel.
+Anyone can set a message timer with `.timer <duration> [message]`. Durations use `s`, `m`, `h`, or `d`, for example `.timer 10m take a break` or `.timer 1d`. Calendar dates also work in local time: `.timer 25/08/2026 18:30 meeting time`. Use `.timer cancel` to cancel the active timer in that channel.
 
 Authorized users can also control either reader by DM. Include the target text-channel ID because DMs have no server channel context: `.chat on <channel-id>` or `.links on <channel-id>`. Use `.chat off` or `.links off` by DM to stop reading.
 

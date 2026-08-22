@@ -153,23 +153,45 @@ async function handleTimerCommand(message, commandArguments) {
     return;
   }
 
-  const durationMatch = commandArguments[0]?.match(/^(\d+(?:\.\d+)?)(s|m|h)$/i);
-  if (!durationMatch) {
-    await message.reply(`Usage: ${prefix}timer <seconds|minutes|hours> [message], for example \`${prefix}timer 10m take a break\`.`);
+  const timerInput = commandArguments[0] || '';
+  const durationMatch = timerInput.match(/^(\d+(?:\.\d+)?)(s|m|h|d)$/i);
+  const dateMatch = timerInput.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  let durationMs;
+  let timerTextStart = 1;
+
+  if (durationMatch) {
+    const amount = Number(durationMatch[1]);
+    const unit = durationMatch[2].toLowerCase();
+    const multiplier = unit === 'd' ? 86_400_000 : unit === 'h' ? 3_600_000 : unit === 'm' ? 60_000 : 1_000;
+    durationMs = amount * multiplier;
+  } else if (dateMatch) {
+    const day = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    const rawYear = Number(dateMatch[3]);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    const timeMatch = commandArguments[1]?.match(/^(\d{1,2}):(\d{2})$/);
+    const hour = timeMatch ? Number(timeMatch[1]) : 0;
+    const minute = timeMatch ? Number(timeMatch[2]) : 0;
+    const targetDate = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (targetDate.getFullYear() !== year || targetDate.getMonth() !== month - 1 || targetDate.getDate() !== day
+      || hour > 23 || minute > 59) {
+      await message.reply('Use a valid date like `25/08/2026` or `25/08/2026 18:30`.');
+      return;
+    }
+    durationMs = targetDate.getTime() - Date.now();
+    timerTextStart = timeMatch ? 2 : 1;
+  } else {
+    await message.reply(`Usage: ${prefix}timer <10s|5m|2h|1d> [message] or \`${prefix}timer 25/08/2026 18:30 message\`.`);
     return;
   }
 
-  const amount = Number(durationMatch[1]);
-  const unit = durationMatch[2].toLowerCase();
-  const multiplier = unit === 'h' ? 3_600_000 : unit === 'm' ? 60_000 : 1_000;
-  const durationMs = amount * multiplier;
-  if (!Number.isFinite(durationMs) || durationMs < 1_000 || durationMs > 86_400_000) {
-    await message.reply('Timer duration must be between 1 second and 24 hours.');
+  if (!Number.isFinite(durationMs) || durationMs < 1_000 || durationMs > 2_147_000_000) {
+    await message.reply('Timer must be at least 1 second and no more than 24 days.');
     return;
   }
 
   if (existingTimer) clearTimeout(existingTimer.timeout);
-  const timerText = commandArguments.slice(1).join(' ') || 'Your timer is finished.';
+  const timerText = commandArguments.slice(timerTextStart).join(' ') || 'Your timer is finished.';
   const timeout = setTimeout(async () => {
     timers.delete(timerKey);
     await message.channel.send(`<@${message.author.id}> ${timerText}`).catch(() => {});
@@ -180,6 +202,7 @@ async function handleTimerCommand(message, commandArguments) {
 
 function formatTimerDuration(durationMs) {
   const totalSeconds = Math.round(durationMs / 1_000);
+  if (totalSeconds % 86_400 === 0) return `${totalSeconds / 86_400} day(s)`;
   if (totalSeconds % 3_600 === 0) return `${totalSeconds / 3_600} hour(s)`;
   if (totalSeconds % 60 === 0) return `${totalSeconds / 60} minute(s)`;
   return `${totalSeconds} second(s)`;
