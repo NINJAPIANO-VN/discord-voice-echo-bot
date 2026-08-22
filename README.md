@@ -53,6 +53,8 @@ Authorized users can also control either reader by DM. Include the target text-c
 
 `.say <text>` uses Google Translate TTS by default. Male and female use the matching Windows voice. The bot joins your voice channel in that same server and speaks the text aloud.
 
+To translate before speaking, use `.say translate <language-code> <text>`, such as `.say translate vi hello everyone`. Multiple languages can be separated by commas: `.say translate vi,en,fr hello everyone`.
+
 The bot does not respond to commands in server text channels.
 
 Everyone can use `.join`, `.leave`, `.chat on`, and `.chat off`. Only Discord user `1046085660483788870` can use the other control commands, including `.join all`. The bot presence shows that it is listening for commands.

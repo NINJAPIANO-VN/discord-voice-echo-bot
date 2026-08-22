@@ -497,16 +497,22 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
 
   let spokenText = speechText;
   if (translationLanguage) {
-    if (!/^[a-z]{2,5}$/i.test(translationLanguage)) {
-      await message.reply('Use a valid language code, for example `es`, `fr`, or `vi`.');
+    const translationLanguages = translationLanguage.split(',').map((language) => language.trim()).filter(Boolean);
+    if (translationLanguages.length === 0 || translationLanguages.some((language) => !/^[a-z]{2,5}$/i.test(language))) {
+      await message.reply('Use valid language codes, for example `es`, `fr`, or `vi`, separated by commas.');
       return;
     }
-    const translationResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(translationLanguage)}&dt=t&q=${encodeURIComponent(speechText)}`);
-    if (!translationResponse.ok) {
-      throw new Error(`Translation service returned HTTP ${translationResponse.status}`);
+    const translatedParts = [];
+    for (const language of translationLanguages) {
+      const translationResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(language)}&dt=t&q=${encodeURIComponent(speechText)}`);
+      if (!translationResponse.ok) {
+        throw new Error(`Translation service returned HTTP ${translationResponse.status}`);
+      }
+      const translationData = await translationResponse.json();
+      const translatedText = translationData[0]?.map(([text]) => text).join('') || speechText;
+      translatedParts.push(`${language}: ${translatedText}`);
     }
-    const translationData = await translationResponse.json();
-    spokenText = translationData[0]?.map(([text]) => text).join('') || speechText;
+    spokenText = translatedParts.join('. ');
   }
 
   const botPermissions = voiceChannel.permissionsFor(client.user);
@@ -544,7 +550,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
     if (voiceMode === 'google') {
-      const response = await fetch(`https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${encodeURIComponent((translationLanguage || 'en').split('-')[0])}&dt=t&q=${encodeURIComponent(spokenText)}`, {
+      const response = await fetch(`https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${encodeURIComponent((translationLanguage || 'en').split(',')[0].split('-')[0])}&dt=t&q=${encodeURIComponent(spokenText)}`, {
         headers: { 'User-Agent': 'Mozilla/5.0' },
       });
       if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
