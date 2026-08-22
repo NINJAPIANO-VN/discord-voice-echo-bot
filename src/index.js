@@ -77,6 +77,7 @@ client.on(Events.MessageCreate, async (message) => {
   const isPrivateIdCommand = message.channel.isDMBased() && (command === 'id' || command === 'userid');
   const isEveryoneJoin = ['all', 'everyone'].includes(commandArguments[0]?.toLowerCase());
   const isPublicVoiceCommand = command === 'leave'
+    || command === 'say'
     || (command === 'join' && !isEveryoneJoin);
   const isPublicChatCommand = command === 'chat';
   if (!authorizedUserIds.has(message.author.id) && !isPrivateIdCommand && !isPublicVoiceCommand && !isPublicChatCommand) return;
