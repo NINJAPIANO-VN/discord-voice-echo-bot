@@ -85,11 +85,15 @@ client.on(Events.MessageCreate, async (message) => {
     if (command === 'say') {
       const requestedVoice = commandArguments[0]?.toLowerCase();
       const hasVoiceChoice = ['google', 'male', 'female'].includes(requestedVoice);
+      const isTranslation = requestedVoice === 'translate';
+      const translationLanguage = isTranslation ? commandArguments[1]?.toLowerCase() : null;
       const voiceMode = hasVoiceChoice ? requestedVoice : 'google';
-      const speechText = hasVoiceChoice
-        ? commandArguments.slice(1).join(' ')
-        : commandArguments.join(' ');
-      await sayInVoiceChannel(message, voiceMode, speechText);
+      const speechText = isTranslation
+        ? commandArguments.slice(2).join(' ')
+        : hasVoiceChoice
+          ? commandArguments.slice(1).join(' ')
+          : commandArguments.join(' ');
+      await sayInVoiceChannel(message, voiceMode, speechText, translationLanguage);
     } else if (command === 'chat') {
       await toggleChatReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
     } else if (command === 'links') {
@@ -368,7 +372,7 @@ async function speakTextInVoice(voiceChannel, speechText) {
   await fs.promises.rm(filePath, { force: true });
 }
 
-async function sayInVoiceChannel(message, voiceMode, speechText) {
+async function sayInVoiceChannel(message, voiceMode, speechText, translationLanguage) {
   let ffmpegPath;
   try {
     ffmpegPath = require('ffmpeg-static');
@@ -409,8 +413,24 @@ async function sayInVoiceChannel(message, voiceMode, speechText) {
   }
 
   if (!speechText) {
-    await message.reply(`Usage: ${prefix}say ${voiceMode} <text>`);
+    await message.reply(translationLanguage
+      ? `Usage: ${prefix}say translate <language-code> <text>`
+      : `Usage: ${prefix}say ${voiceMode} <text>`);
     return;
+  }
+
+  let spokenText = speechText;
+  if (translationLanguage) {
+    if (!/^[a-z]{2,5}$/i.test(translationLanguage)) {
+      await message.reply('Use a valid language code, for example `es`, `fr`, or `vi`.');
+      return;
+    }
+    const translationResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(translationLanguage)}&dt=t&q=${encodeURIComponent(speechText)}`);
+    if (!translationResponse.ok) {
+      throw new Error(`Translation service returned HTTP ${translationResponse.status}`);
+    }
+    const translationData = await translationResponse.json();
+    spokenText = translationData[0]?.map(([text]) => text).join('') || speechText;
   }
 
   const botPermissions = voiceChannel.permissionsFor(client.user);
@@ -447,7 +467,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText) {
     await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
     if (voiceMode === 'google') {
-      const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-US&q=${encodeURIComponent(speechText)}`);
+      const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(translationLanguage || 'en-US')}&q=${encodeURIComponent(spokenText)}`);
       if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
       await fs.promises.writeFile(filePath, Buffer.from(await response.arrayBuffer()));
     } else {
@@ -464,7 +484,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText) {
     ], { stdio: ['ignore', 'pipe', 'ignore'] });
     const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
     player.play(resource);
-    await message.reply(`Using **${voiceMode}** voice in **${voiceChannel.name}**: ${speechText}`);
+    await message.reply(`Using **${voiceMode}** voice in **${voiceChannel.name}**: ${spokenText}`);
     await new Promise((resolve, reject) => {
       let settled = false;
       const resolveOnce = () => {
