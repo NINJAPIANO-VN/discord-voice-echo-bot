@@ -96,10 +96,15 @@ client.on(Events.MessageCreate, async (message) => {
       await toggleLinkReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
     } else if (command === 'status' || ['listening', 'thinking', 'streaming', 'watching'].includes(command)) {
       const status = command === 'status' ? commandArguments[0]?.toLowerCase() : command;
-      const statusText = command === 'status'
+      const statusArguments = command === 'status'
         ? commandArguments.slice(1).join(' ')
         : commandArguments.join(' ');
-      await setBotStatus(message, status, statusText);
+      const statusUrlMatch = statusArguments.match(/\s+(https?:\/\/\S+)$/i);
+      const statusUrl = statusUrlMatch?.[1];
+      const statusText = statusUrl
+        ? statusArguments.slice(0, statusUrlMatch.index).trim()
+        : statusArguments;
+      await setBotStatus(message, status, statusText, statusUrl);
     } else if (command === 'id' || command === 'userid') {
       await sendUserIdPrivately(message, message.mentions.users.first());
     } else if (command === 'join') {
@@ -133,7 +138,7 @@ async function sendUserIdPrivately(message, targetUser) {
   }
 }
 
-async function setBotStatus(message, status, statusText) {
+async function setBotStatus(message, status, statusText, statusUrl) {
   const text = (statusText || '').slice(0, maxStatusTextLength);
   if (status === 'listening') {
     client.user.setPresence({
@@ -169,7 +174,7 @@ async function setBotStatus(message, status, statusText) {
       activities: [{
         name: text || 'live',
         type: ActivityType.Streaming,
-        url: 'https://twitch.tv/discord',
+        url: statusUrl || 'https://twitch.tv/discord',
       }],
     });
     await message.reply(`Status set to Streaming ${text || 'live'}.`);
