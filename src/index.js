@@ -24,7 +24,7 @@ const {
 } = require('@discordjs/voice');
 
 const token = process.env.DISCORD_TOKEN;
-const prefix = process.env.COMMAND_PREFIX || '!';
+const prefix = process.env.COMMAND_PREFIX || '.';
 
 if (!token) {
   console.error('Missing DISCORD_TOKEN in .env');
@@ -48,6 +48,7 @@ const authorizedUserIds = new Set([
   '1046085660483788870',
 ]);
 const maxStatusTextLength = 128;
+const socialLinkPattern = /https?:\/\/([^\s/?#]+)[^\s<>]*/gi;
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
@@ -64,7 +65,7 @@ client.on(Events.MessageCreate, async (message) => {
   const reader = chatReaders.get(message.guildId);
   if (reader && reader.channelId === message.channelId && !message.content.startsWith(prefix)) {
     const links = [...message.content.matchAll(socialLinkPattern)].map(([url, domain]) => ({ url, domain }));
-    if (!reader.linksOnly || links.length > 0) {
+    if (reader.chatEnabled || (reader.linksEnabled && links.length > 0)) {
       await queueChatMessage(message, reader, links);
     }
     return;
@@ -107,7 +108,11 @@ client.on(Events.MessageCreate, async (message) => {
       await joinOwnerChannel(message, targetUser, commandArguments[0]?.toLowerCase() === 'all');
     } else if (command === 'leave') {
       leaveAllGuilds();
-      chatReaders.delete(message.guildId);
+      if (message.channel.isDMBased()) {
+        chatReaders.clear();
+      } else {
+        chatReaders.delete(message.guildId);
+      }
       await message.reply('I left the voice channel.');
     } else if (!message.channel.isDMBased()) {
       return;
@@ -200,14 +205,16 @@ async function getReaderContext(message, channelId) {
 
 async function toggleChatReader(message, action, channelId) {
   if (action === 'off') {
-    if (message.channel.isDMBased()) chatReaders.clear();
-    else chatReaders.delete(message.guildId);
+    if (message.channel.isDMBased()) {
+      for (const reader of chatReaders.values()) reader.chatEnabled = false;
+    } else {
+      const reader = chatReaders.get(message.guildId);
+      if (reader) reader.chatEnabled = false;
+    }
+    removeInactiveReaders();
     await message.reply('I stopped reading this chat channel.');
     return;
   }
-      const echoLabel = echoEveryone ? 'everyone' : `only ${targetLabel}`;
-      await message.reply(`Joined **${voiceChannel.name}**. I will repeat ${echoLabel}.`);
-      const targetLabel = targetUser ? `<@${targetUser.id}>` : 'you';
   if (action !== 'on') {
     await message.reply(`Usage: ${prefix}chat on or ${prefix}chat off`);
     return;
@@ -216,20 +223,20 @@ async function toggleChatReader(message, action, channelId) {
   const context = await getReaderContext(message, channelId);
   if (!context) return;
 
-  chatReaders.set(context.textChannel.guildId, {
-    channelId: context.textChannel.id,
-    voiceChannel: context.voiceChannel,
-    queue: [],
-    speaking: false,
-    linksOnly: false,
-  });
+  const reader = getOrCreateReader(context);
+  reader.chatEnabled = true;
   await message.reply(`I will read messages from **${context.textChannel.name}** in **${context.voiceChannel.name}**. Use \`${prefix}chat off\` to stop.`);
 }
 
 async function toggleLinkReader(message, action, channelId) {
   if (action === 'off') {
-    if (message.channel.isDMBased()) chatReaders.clear();
-    else chatReaders.delete(message.guildId);
+    if (message.channel.isDMBased()) {
+      for (const reader of chatReaders.values()) reader.linksEnabled = false;
+    } else {
+      const reader = chatReaders.get(message.guildId);
+      if (reader) reader.linksEnabled = false;
+    }
+    removeInactiveReaders();
     await message.reply('I stopped announcing social-media links.');
     return;
   }
@@ -241,14 +248,35 @@ async function toggleLinkReader(message, action, channelId) {
   const context = await getReaderContext(message, channelId);
   if (!context) return;
 
-  chatReaders.set(context.textChannel.guildId, {
+  const reader = getOrCreateReader(context);
+  reader.linksEnabled = true;
+  await message.reply(`I will announce social-media links from **${context.textChannel.name}** in **${context.voiceChannel.name}**. Use \`${prefix}links off\` to stop.`);
+}
+
+function getOrCreateReader(context) {
+  const guildId = context.textChannel.guildId;
+  const existingReader = chatReaders.get(guildId);
+  if (existingReader && existingReader.channelId === context.textChannel.id) {
+    existingReader.voiceChannel = context.voiceChannel;
+    return existingReader;
+  }
+
+  const reader = {
     channelId: context.textChannel.id,
     voiceChannel: context.voiceChannel,
     queue: [],
     speaking: false,
-    linksOnly: true,
-  });
-  await message.reply(`I will announce social-media links from **${context.textChannel.name}** in **${context.voiceChannel.name}**. Use \`${prefix}links off\` to stop.`);
+    chatEnabled: false,
+    linksEnabled: false,
+  };
+  chatReaders.set(guildId, reader);
+  return reader;
+}
+
+function removeInactiveReaders() {
+  for (const [guildId, reader] of chatReaders) {
+    if (!reader.chatEnabled && !reader.linksEnabled) chatReaders.delete(guildId);
+  }
 }
 
 async function queueChatMessage(message, reader, links) {
@@ -256,9 +284,9 @@ async function queueChatMessage(message, reader, links) {
     (spokenText, link) => spokenText.replace(link.url, `${formatLinkDomain(link.domain)} link`),
     message.content.slice(0, 300),
   );
-  const text = reader.linksOnly
-    ? `A ${formatLinkDomain(links[0].domain)} link was shared.`
-    : spokenMessage;
+  const text = reader.chatEnabled
+    ? spokenMessage
+    : `A ${formatLinkDomain(links[0].domain)} link was shared.`;
   reader.queue.push(text);
   if (reader.speaking) return;
 
