@@ -49,6 +49,20 @@ const timers = new Map();
 const authorizedUserIds = new Set([process.env.OWNER_ID].filter(Boolean));
 const maxStatusTextLength = 128;
 const socialLinkPattern = /https?:\/\/([^\s/?#]+)[^\s<>]*/gi;
+const languageAliases = {
+  afrikaans: 'af', arabic: 'ar', bengali: 'bn', bulgarian: 'bg', catalan: 'ca',
+  chinese: 'zh-CN', 'chinese simplified': 'zh-CN', 'chinese traditional': 'zh-TW',
+  croatian: 'hr', czech: 'cs', danish: 'da', dutch: 'nl', english: 'en',
+  estonian: 'et', filipino: 'tl', finnish: 'fi', french: 'fr', german: 'de',
+  greek: 'el', gujarati: 'gu', hebrew: 'iw', hindi: 'hi', hungarian: 'hu',
+  icelandic: 'is', indonesian: 'id', italian: 'it', japanese: 'ja', kannada: 'kn',
+  korean: 'ko', latvian: 'lv', lithuanian: 'lt', malay: 'ms', malayalam: 'ml',
+  marathi: 'mr', nepali: 'ne', norwegian: 'no', persian: 'fa', polish: 'pl',
+  portuguese: 'pt', punjabi: 'pa', romanian: 'ro', russian: 'ru', serbian: 'sr',
+  slovak: 'sk', slovenian: 'sl', spanish: 'es', swahili: 'sw', swedish: 'sv',
+  tamil: 'ta', telugu: 'te', thai: 'th', turkish: 'tr', ukrainian: 'uk',
+  urdu: 'ur', vietnamese: 'vi', welsh: 'cy', yiddish: 'yi', zulu: 'zu',
+};
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
@@ -497,11 +511,13 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
 
   let spokenText = speechText;
   if (translationLanguage) {
-    const translationLanguages = translationLanguage.split(',').map((language) => language.trim()).filter(Boolean);
-    if (translationLanguages.length === 0 || translationLanguages.some((language) => !/^[a-z]{2,5}$/i.test(language))) {
-      await message.reply('Use valid language codes, for example `es`, `fr`, or `vi`, separated by commas.');
+    const requestedLanguages = translationLanguage.split(',').map((language) => language.trim()).filter(Boolean);
+    const translationLanguages = requestedLanguages.map((language) => languageAliases[language.toLowerCase()] || language);
+    if (translationLanguages.length === 0 || translationLanguages.some((language) => !/^[a-z]{2,5}(?:-[a-z]{2,5})?$/i.test(language))) {
+      await message.reply('Use language names or codes, for example `Vietnamese, English, French` or `vi,en,fr`.');
       return;
     }
+    translationLanguage = translationLanguages.join(',');
     const translatedParts = [];
     for (const language of translationLanguages) {
       const translationResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(language)}&dt=t&q=${encodeURIComponent(speechText)}`);

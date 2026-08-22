@@ -53,7 +53,7 @@ Authorized users can also control either reader by DM. Include the target text-c
 
 `.say <text>` uses Google Translate TTS by default. Male and female use the matching Windows voice. The bot joins your voice channel in that same server and speaks the text aloud.
 
-To translate before speaking, use `.say translate <language-code> <text>`, such as `.say translate vi hello everyone`. Multiple languages can be separated by commas: `.say translate vi,en,fr hello everyone`.
+To translate before speaking, use `.say translate <language> <text>`, such as `.say translate vi hello everyone`. Multiple languages can be separated by commas: `.say translate vi,en,fr hello everyone`. Full language names are also supported: `.say translate Vietnamese,English,French hello everyone`.
 
 The bot does not respond to commands in server text channels.
 
