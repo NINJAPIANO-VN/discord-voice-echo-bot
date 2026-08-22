@@ -44,9 +44,7 @@ const client = new Client({
 
 const players = new Map();
 const chatReaders = new Map();
-const authorizedUserIds = new Set([
-  '1046085660483788870',
-]);
+const authorizedUserIds = new Set([process.env.OWNER_ID].filter(Boolean));
 const maxStatusTextLength = 128;
 const socialLinkPattern = /https?:\/\/([^\s/?#]+)[^\s<>]*/gi;
 
@@ -76,8 +74,9 @@ client.on(Events.MessageCreate, async (message) => {
   const [commandName, ...commandArguments] = commandText.split(/\s+/);
   const command = commandName?.toLowerCase();
   const isPrivateIdCommand = message.channel.isDMBased() && (command === 'id' || command === 'userid');
+  const isEveryoneJoin = ['all', 'everyone'].includes(commandArguments[0]?.toLowerCase());
   const isPublicVoiceCommand = command === 'leave'
-    || (command === 'join' && commandArguments[0]?.toLowerCase() !== 'all');
+    || (command === 'join' && !isEveryoneJoin);
   const isPublicChatCommand = command === 'chat';
   if (!authorizedUserIds.has(message.author.id) && !isPrivateIdCommand && !isPublicVoiceCommand && !isPublicChatCommand) return;
 
@@ -105,7 +104,7 @@ client.on(Events.MessageCreate, async (message) => {
     } else if (command === 'join') {
       const targetUser = message.mentions.users.first()
         || (/^\d+$/.test(commandArguments[0] || '') ? { id: commandArguments[0] } : undefined);
-      await joinOwnerChannel(message, targetUser, commandArguments[0]?.toLowerCase() === 'all');
+      await joinOwnerChannel(message, targetUser, isEveryoneJoin);
     } else if (command === 'leave') {
       leaveAllGuilds();
       if (message.channel.isDMBased()) {
