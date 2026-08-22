@@ -94,7 +94,7 @@ client.on(Events.MessageCreate, async (message) => {
       await toggleChatReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
     } else if (command === 'links') {
       await toggleLinkReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
-    } else if (command === 'status' || ['listening', 'thinking', 'watching'].includes(command)) {
+    } else if (command === 'status' || ['listening', 'thinking', 'streaming', 'watching'].includes(command)) {
       const status = command === 'status' ? commandArguments[0]?.toLowerCase() : command;
       const statusText = command === 'status'
         ? commandArguments.slice(1).join(' ')
@@ -163,7 +163,19 @@ async function setBotStatus(message, status, statusText) {
     await message.reply(`Status set to Watching ${text || 'the server'}.`);
     return;
   }
-  await message.reply(`Usage: ${prefix}listening <text>, ${prefix}thinking <text>, or ${prefix}watching <text>`);
+  if (status === 'streaming') {
+    client.user.setPresence({
+      status: 'online',
+      activities: [{
+        name: text || 'live',
+        type: ActivityType.Streaming,
+        url: 'https://twitch.tv/discord',
+      }],
+    });
+    await message.reply(`Status set to Streaming ${text || 'live'}.`);
+    return;
+  }
+  await message.reply(`Usage: ${prefix}listening <text>, ${prefix}thinking <text>, ${prefix}streaming <text>, or ${prefix}watching <text>`);
 }
 
 async function getReaderContext(message, channelId) {
