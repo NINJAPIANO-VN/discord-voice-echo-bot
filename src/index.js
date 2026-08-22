@@ -45,6 +45,7 @@ const client = new Client({
 
 const players = new Map();
 const chatReaders = new Map();
+const timers = new Map();
 const authorizedUserIds = new Set([process.env.OWNER_ID].filter(Boolean));
 const maxStatusTextLength = 128;
 const socialLinkPattern = /https?:\/\/([^\s/?#]+)[^\s<>]*/gi;
@@ -80,7 +81,8 @@ client.on(Events.MessageCreate, async (message) => {
     || command === 'say'
     || (command === 'join' && !isEveryoneJoin);
   const isPublicChatCommand = command === 'chat';
-  if (!authorizedUserIds.has(message.author.id) && !isPrivateIdCommand && !isPublicVoiceCommand && !isPublicChatCommand) return;
+  const isPublicTimerCommand = command === 'timer';
+  if (!authorizedUserIds.has(message.author.id) && !isPrivateIdCommand && !isPublicVoiceCommand && !isPublicChatCommand && !isPublicTimerCommand) return;
 
   try {
     if (command === 'say') {
@@ -99,6 +101,8 @@ client.on(Events.MessageCreate, async (message) => {
       await toggleChatReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
     } else if (command === 'links') {
       await toggleLinkReader(message, commandArguments[0]?.toLowerCase(), commandArguments[1]);
+    } else if (command === 'timer') {
+      await handleTimerCommand(message, commandArguments);
     } else if (command === 'status' || ['listening', 'thinking', 'streaming', 'watching'].includes(command)) {
       const status = command === 'status' ? commandArguments[0]?.toLowerCase() : command;
       const statusArguments = command === 'status'
@@ -132,6 +136,54 @@ client.on(Events.MessageCreate, async (message) => {
     await message.reply(`I could not complete that command: ${error.message}`).catch(() => {});
   }
 });
+
+async function handleTimerCommand(message, commandArguments) {
+  const timerKey = `${message.channelId}:${message.author.id}`;
+  const action = commandArguments[0]?.toLowerCase();
+  const existingTimer = timers.get(timerKey);
+
+  if (action === 'cancel' || action === 'off') {
+    if (!existingTimer) {
+      await message.reply('You do not have an active timer here.');
+      return;
+    }
+    clearTimeout(existingTimer.timeout);
+    timers.delete(timerKey);
+    await message.reply('Timer cancelled.');
+    return;
+  }
+
+  const durationMatch = commandArguments[0]?.match(/^(\d+(?:\.\d+)?)(s|m|h)$/i);
+  if (!durationMatch) {
+    await message.reply(`Usage: ${prefix}timer <seconds|minutes|hours> [message], for example \`${prefix}timer 10m take a break\`.`);
+    return;
+  }
+
+  const amount = Number(durationMatch[1]);
+  const unit = durationMatch[2].toLowerCase();
+  const multiplier = unit === 'h' ? 3_600_000 : unit === 'm' ? 60_000 : 1_000;
+  const durationMs = amount * multiplier;
+  if (!Number.isFinite(durationMs) || durationMs < 1_000 || durationMs > 86_400_000) {
+    await message.reply('Timer duration must be between 1 second and 24 hours.');
+    return;
+  }
+
+  if (existingTimer) clearTimeout(existingTimer.timeout);
+  const timerText = commandArguments.slice(1).join(' ') || 'Your timer is finished.';
+  const timeout = setTimeout(async () => {
+    timers.delete(timerKey);
+    await message.channel.send(`<@${message.author.id}> ${timerText}`).catch(() => {});
+  }, durationMs);
+  timers.set(timerKey, { timeout });
+  await message.reply(`Timer set for ${formatTimerDuration(durationMs)}. Use \`${prefix}timer cancel\` to cancel it.`);
+}
+
+function formatTimerDuration(durationMs) {
+  const totalSeconds = Math.round(durationMs / 1_000);
+  if (totalSeconds % 3_600 === 0) return `${totalSeconds / 3_600} hour(s)`;
+  if (totalSeconds % 60 === 0) return `${totalSeconds / 60} minute(s)`;
+  return `${totalSeconds} second(s)`;
+}
 
 async function sendUserIdPrivately(message, targetUser) {
   const user = targetUser || message.author;
