@@ -444,7 +444,9 @@ async function speakTextInVoice(voiceChannel, speechText) {
   await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
 
   const filePath = path.join(os.tmpdir(), `discord-chat-tts-${Date.now()}.mp3`);
-  const response = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en-US&q=${encodeURIComponent(speechText)}`);
+  const response = await fetch(`https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=en&dt=t&q=${encodeURIComponent(speechText)}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+  });
   if (!response.ok) throw new Error(`Google Translate returned HTTP ${response.status}`);
   await fs.promises.writeFile(filePath, Buffer.from(await response.arrayBuffer()));
 
@@ -520,12 +522,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
     translationLanguage = translationLanguages.join(',');
     const translatedParts = [];
     for (const language of translationLanguages) {
-      const translationResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(language)}&dt=t&q=${encodeURIComponent(speechText)}`);
-      if (!translationResponse.ok) {
-        throw new Error(`Translation service returned HTTP ${translationResponse.status}`);
-      }
-      const translationData = await translationResponse.json();
-      const translatedText = translationData[0]?.map(([text]) => text).join('') || speechText;
+      const translatedText = await translateText(speechText, language);
       translatedParts.push(`${language}: ${translatedText}`);
     }
     spokenText = translatedParts.join('. ');
@@ -613,6 +610,24 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
       leaveGuild(voiceChannel.guild.id);
     }
   }
+}
+
+async function translateText(text, language) {
+  const googleResponse = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(language)}&dt=t&q=${encodeURIComponent(text)}`);
+  if (googleResponse.ok) {
+    const googleData = await googleResponse.json();
+    return googleData[0]?.map(([part]) => part).join('') || text;
+  }
+
+  const fallbackResponse = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect%7C${encodeURIComponent(language)}`);
+  if (!fallbackResponse.ok) {
+    throw new Error(`Translation services returned HTTP ${googleResponse.status} and ${fallbackResponse.status}`);
+  }
+  const fallbackData = await fallbackResponse.json();
+  if (fallbackData.responseStatus !== 200 || !fallbackData.responseData?.translatedText) {
+    throw new Error('Translation service did not return translated text');
+  }
+  return fallbackData.responseData.translatedText;
 }
 
 async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
