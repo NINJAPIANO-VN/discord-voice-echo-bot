@@ -523,7 +523,7 @@ async function sayInVoiceChannel(message, voiceMode, speechText, translationLang
     const translatedParts = [];
     for (const language of translationLanguages) {
       const translatedText = await translateText(speechText, language);
-      translatedParts.push(`${language}: ${translatedText}`);
+      translatedParts.push(translatedText);
     }
     spokenText = translatedParts.join('. ');
   }
