@@ -699,6 +699,9 @@ async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
   player.on('error', (error) => {
     console.error('Voice playback error:', error.message);
   });
+  player.on(AudioPlayerStatus.Playing, () => {
+    console.log(`Echo playback started in ${voiceChannel.name}`);
+  });
   connection.subscribe(player);
   players.set(guildId, { connection, player });
 
@@ -736,6 +739,7 @@ async function joinOwnerChannel(message, targetUser, echoEveryone = false) {
     });
     const resource = createAudioResource(audioStream, {
       inputType: StreamType.Opus,
+      silencePaddingFrames: 0,
     });
 
     audioStream.on('error', (error) => {
